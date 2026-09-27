@@ -1,10 +1,11 @@
-# Round 1.28 Gauge
+# ESP32 2.8" Gauge
 
-A **Waveshare ESP32-S3-LCD-1.28** turned into an automotive instrument.
+An **ESP32-2432S028R** ("CYD") 2.8" touch display turned into an automotive
+instrument.
 
 The dial is drawn from scratch into an RGB565 framebuffer — **no graphics
-library** — and pushed to the panel as whole frames. It runs at **38.5 fps**
-on the 240×240 round display.
+library** — and pushed to the panel as whole frames. It runs at **34.5 fps**
+on the 320×240 ST7789V panel.
 
 ![dial preview](tools/preview/dial_rpm.png)
 
@@ -14,21 +15,22 @@ on the 240×240 round display.
 
 | | |
 |---|---|
-| Panel | GC9A01A 240×240 round IPS, SPI, driving at 80 MHz |
-| Firmware | 403 KB, 87 % of the 4 MB app slot free |
-| Frame rate | **38.5 fps** delivered (measured on the dial) |
-| Tests | 81 host unit tests + 29 contract checks, all passing |
+| Panel | ST7789V 240×320 IPS, SPI, driving at 80 MHz |
+| Touch | XPT2046 resistive, its own SPI bus; tap cycles instruments |
+| Firmware | 367 KB, 82 % of the 2 MB app slot free |
+| Frame rate | **34.5 fps** delivered (7.0 ms render + 19.3 ms panel flush) |
+| Tests | 82 host unit tests + 33 contract checks, all passing |
 | Graphics | none — a framebuffer and about 600 lines of drawing code |
 
 The gauge currently shows a tachometer with a boot self-test sweep and an
 engine simulator. Temperature, boost and battery presets are wired up and
-switchable at runtime.
+switchable at runtime (console or touch).
 
 ## Why there is no LVGL
 
-The first version of this used LVGL 9.6. It worked, but the panel only ever
-painted part of the dial — whole sectors stayed black, or went black a fraction
-of a second after being drawn correctly.
+The first version of this project (on the round 1.28" board) used LVGL 9.6. It
+worked, but the panel only ever painted part of the dial — whole sectors stayed
+black, or went black a fraction of a second after being drawn correctly.
 
 A solid white fill drawn straight into a framebuffer fills the panel edge to
 edge and rock steady. That was the whole answer: **the fault was LVGL's
@@ -36,35 +38,38 @@ partial-flush path**, not the panel, the wiring or the power. Dropping it made
 the firmware 61 % smaller (869 KB → 337 KB) and the display perfect.
 
 Everything here is plain C on one framebuffer. The full reasoning, including
-what was ruled out along the way, is in
-[`docs/hardware.md`](docs/hardware.md).
+what was ruled out along the way, is in [`docs/hardware.md`](docs/hardware.md).
 
 ## Hardware
 
 | | |
 |---|---|
-| Board | Waveshare ESP32-S3-LCD-1.28 (non-touch) |
-| SoC | ESP32-S3R2, dual-core LX7 @ 240 MHz, 2 MB in-package PSRAM |
-| Flash | 16 MB Winbond W25Q128JV |
-| Display | GC9A01A round IPS, 240×240, 4-wire SPI |
-| USB | CH343P → UART0 on GPIO43/44 (COM port, 115200) |
-| IMU | QMI8658 on I²C (SDA GPIO6 / SCL GPIO7) |
-| Battery | ADC on GPIO1 through a 200K/100K divider |
+| Board | ESP32-2432S028R ("CYD") |
+| SoC | ESP32-D0WD-V3, dual-core LX6 @ 240 MHz, no PSRAM |
+| Flash | 4 MB GigaDevice GD25Q32 |
+| Display | ST7789V IPS, 240×320, 4-wire SPI — driven in 320×240 landscape |
+| Touch | XPT2046 resistive, SPI |
+| USB | CH340 → UART0 on GPIO1/3 (COM port, 115200) |
 
-Display pins: **DC 8, CS 9, CLK 10, MOSI 11, RST 12, backlight 40.**
+Display pins: **SCK 14, MOSI 13, MISO 12, CS 15, DC 2, RST tied to EN,
+backlight 21.**
+Touch pins: **SCK 25, MOSI 32, MISO 39, CS 33, IRQ 36.**
 
-Full discovery record and pinout: [`docs/hardware.md`](docs/hardware.md).
+The listing for this board claims an ILI9341; the panel that arrived is an
+ST7789V. Both are selectable under menuconfig — see
+[`docs/hardware.md`](docs/hardware.md) for how that was discovered and what
+each wrong setting looks like.
 
 ## Layout
 
 ```
 firmware/
   components/
-    bsp/     SPI, the GC9A01A panel, backlight.  Nothing else.
+    bsp/     SPI, the ST7789V/ILI9341 panel, backlight, XPT2046 touch
     gfx/     RGB565 framebuffer, primitives, generated bitmap fonts
     gauge/   gauge_math / theme / presets   pure C, host-tested
              gauge_render.c                 draws into the gfx surface
-  main/      application: console, gauge driver, bring-up test screens
+  main/      application: console, gauge driver, touch, bring-up screens
 tests/
   host/      unit tests, run on the desktop against a stubbed panel
   py/        contract checks on the generated artefacts
@@ -74,8 +79,7 @@ tools/
   gen_font.py         rasterise the fonts -> gfx/gfx_font_data.c
   render_preview.py   host-rendered dial mock-ups
   probe.py            identify the board / dump chip info
-  flash.ps1           reboot into the ROM bootloader and flash
-  flash_chunked.py    flash in 16 KB pieces (workaround, see hardware.md)
+  flash.ps1           flash and monitor in one command
 docs/
   hardware.md      what the board is, how it was discovered, what was wrong
   development.md   toolchain, build, flash, tests, design notes
@@ -88,27 +92,12 @@ tools\test.ps1                  # host tests + contract checks, ~2 s
 
 tools\idf.bat build
 
-# put the board in the ROM bootloader - from the running app, just type:
-#   gauge> bootloader
-tools\idf.bat -p COM6 flash monitor
+# the CH340's DTR/RTS lines are wired to EN/IO0, so flashing is automatic:
+tools\idf.bat -p COM49 flash monitor
 ```
 
-`tools\flash.ps1` wraps the reboot-and-flash sequence into one command.
-
-### Getting into the ROM bootloader
-
-The board cannot be reset into download mode over USB: the CH343P's DTR line is
-not wired to the boot strap, so esptool's reset sequences cannot pull `GPIO0`
-low. Two ways in:
-
-* **From the running app** — type `bootloader` at the `gauge>` console. The app
-  sets `RTC_CNTL_FORCE_DOWNLOAD_BOOT` and resets, and the chip sits in the ROM
-  bootloader until you flash it. This is the normal path and needs no buttons.
-* **From cold** — hold **BOOT**, press and release **RESET**, keep holding BOOT
-  for a second, then release it.
-
-`EN` *is* wired to the CH343P's RTS line, so esptool can restart the chip after
-flashing on its own.
+`tools\flash.ps1` wraps that into one command. No button presses are ever
+needed — unlike the round board this project was ported from.
 
 ## Console
 
@@ -121,16 +110,18 @@ dead panel can never lock you out.
 | `gauge` | List instruments; `gauge temp` switches |
 | `demo on\|off\|sweep` | Engine simulator, or replay the self-test sweep |
 | `value 4200` | Drive the needle directly (stops the simulator) |
-| `fps` | Delivered frame rate; `fps off` hides the on-dial readout |
+| `fps` | Delivered frame rate + render/flush split; `fps off` hides the readout |
+| `touch` | Touch state; `touch watch [s]` prints live raw samples for calibration |
 | `backlight 0-100` | Backlight duty |
 | `test fill\|bars\|grid\|circle\|quad` | Bring-up test screens |
 | `next` | Cycle test screens |
 | `flush` | Panel transfer statistics |
-| `bootloader` | Reboot into ROM download mode, ready for `idf.py flash` |
+| `bootloader` | Reboot into ROM download mode (recovery path) |
 | `free` / `version` | Heap usage / build info |
 
 `test fill` is the one worth remembering: a solid white screen is the fastest
-way to tell a panel problem from a drawing problem.
+way to tell a panel problem from a drawing problem. The frame-rate readout is
+also drawn on the dial itself, under the numeric value.
 
 ## Tests
 
@@ -168,9 +159,10 @@ static const gauge_config_t s_oil_temp = {
 };
 ```
 
-Register it in `s_presets[]` and it appears in the `gauge` console command.
-`tools\test.ps1` then picks it up automatically: the preset tests build a dial
-for every entry and check the geometry is self-consistent.
+Register it in `s_presets[]` and it appears in the `gauge` console command and
+in the touch rotation. `tools\test.ps1` then picks it up automatically: the
+preset tests build a dial for every entry and check the geometry is
+self-consistent.
 
 To see it before flashing, add the same preset to
 `tools/render_preview.py` and run it — a contract check fails if the two lists
@@ -191,6 +183,9 @@ details that make it read as one:
 | Needle | tapered polygon rotated about the dial centre, with a counterweight tail |
 | Branding | `epicEFI` above the hub |
 
+The dial is a 240 px circle centred in the wider 320×240 panel; the 40 px side
+margins are left black, ready for a future info strip.
+
 `tools/render_preview.py` renders every preset on the host so the design can be
 reviewed without flashing — the four instruments side by side:
 
@@ -199,8 +194,10 @@ reviewed without flashing — the four instruments side by side:
 ## Roadmap
 
 - [x] Board bring-up, toolchain, gauge renderer, RPM demo
-- [x] No-graphics-library rewrite, 38.5 fps
+- [x] No-graphics-library rewrite
 - [x] Host tests for the renderer and the drawing primitives
+- [x] Touch bring-up: tap to change instrument
 - [ ] Real data: CAN / OBD-II / analogue inputs
-- [ ] Persist gauge selection and calibration in NVS
-- [ ] QMI8658 IMU: accelerometer peak-hold, orientation sensing
+- [ ] Persist gauge selection and touch calibration in NVS
+- [ ] Use the side margins for a digital read-out / warning strip
+- [ ] SD card (GPIO 18/19/23/5) for logging

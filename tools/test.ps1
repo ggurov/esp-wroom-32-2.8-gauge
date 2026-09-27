@@ -1,33 +1,28 @@
 <#
 .SYNOPSIS
-    Run the test suites for round-1.28-gauge.
+    Run the test suites for esp-wroom-32-2.8-gauge.
 
 .DESCRIPTION
-    Three layers, cheapest first:
+    Two layers, cheapest first:
 
       1. host unit tests   - pure C (gauge_math / gauge_theme / gauge_presets /
-                             the generated needle blob) compiled with the system
-                             GCC. Sub-second, no hardware needed.
-      2. contract checks   - Python guards on assumptions we make about LVGL,
-                             the needle generator, the enabled fonts and the
-                             host preview renderer.
-      3. device tests      - Unity running the real LVGL widget tree on the
-                             ESP32-S3.  Needs -Device and a board.
+                             gfx / gauge_render) compiled with the system GCC
+                             against a stubbed panel.  Sub-second, no hardware.
+      2. contract checks   - Python guards on assumptions about the generated
+                             fonts, the enabled text, the host preview renderer,
+                             LVGL never coming back, and the doc links.
 
-    Tests register themselves with a constructor in the host framework and with
-    TEST_CASE() on the target, so there is no list to keep up to date.
+    Tests register themselves with a constructor in the host framework, so
+    there is no list to keep up to date.
 
 .EXAMPLE
     tools\test.ps1                       # host + contracts
-    tools\test.ps1 -Filter gauge_math     # one suite
-    tools\test.ps1 -Device                # also build, flash and run on target
+    tools\test.ps1 -Filter gauge_math    # one suite
 #>
 [CmdletBinding()]
 param(
-    [string] $Gcc       = 'C:\msys64\mingw64\bin\gcc.exe',
-    [string] $Filter    = '',
-    [switch] $Device,
-    [string] $Port      = 'COM6',
+    [string] $Gcc    = 'C:\msys64\mingw64\bin\gcc.exe',
+    [string] $Filter = '',
     [switch] $SkipHost
 )
 
@@ -129,50 +124,10 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-# 3. device tests
-# ---------------------------------------------------------------------------
-if ($Device) {
-    Write-Step 'device tests (build)'
-    $env:IDF_PROJECT_DIR = Join-Path $repoRoot 'tests\device'
-    try {
-        & (Join-Path $PSScriptRoot 'idf.bat') build
-        if ($LASTEXITCODE -ne 0) {
-            Write-Bad 'device test app failed to build'
-            $failed += 'device tests (build)'
-        } else {
-            Write-Step 'device tests (flash)'
-            Write-Host '    The board must be in the ROM bootloader.'
-            Write-Host '    From the app: type `bootloader`. From cold: BOOT + RESET.'
-            & (Join-Path $PSScriptRoot 'idf.bat') -p $Port flash
-            if ($LASTEXITCODE -ne 0) {
-                Write-Bad 'flashing the test app failed'
-                $failed += 'device tests (flash)'
-            } else {
-                Write-Step 'device tests (run)'
-                & python (Join-Path $PSScriptRoot 'run_device_tests.py') --port $Port
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Bad 'device tests reported failures'
-                    $failed += 'device tests'
-                } else {
-                    Write-Ok 'all device tests passed'
-                }
-            }
-        }
-    } finally {
-        Remove-Item Env:\IDF_PROJECT_DIR -ErrorAction SilentlyContinue
-    }
-}
-
-# ---------------------------------------------------------------------------
 Write-Host ''
 if ($failed.Count -eq 0) {
     Write-Host '==================================================' -ForegroundColor Green
-    if ($Device) {
-        Write-Host '  ALL SUITES PASSED (host, contracts, device)' -ForegroundColor Green
-    } else {
-        Write-Host '  ALL SUITES PASSED (host, contracts)' -ForegroundColor Green
-        Write-Host '  device tests not run - pass -Device to include them'
-    }
+    Write-Host '  ALL SUITES PASSED (host, contracts)' -ForegroundColor Green
     Write-Host '==================================================' -ForegroundColor Green
     exit 0
 } else {

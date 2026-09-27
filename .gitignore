@@ -16,10 +16,9 @@ backup/
 tools/__pycache__/
 tools/.venv/
 
-# Generated preview images.  The four dial renders and the sheet are tracked
+# Generated preview images.  The dial renders and the sheet are tracked
 # because README.md embeds them; these are throwaway intermediates.
 tools/preview/*_2x.png
-tools/preview/needle.png
 
 # Editors / OS
 .vscode/

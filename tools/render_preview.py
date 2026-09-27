@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Render host-side mock-ups of every gauge preset.
+Render host-side mock-ups of every gauge preset on the 2.8" panel.
 
-Mirrors the geometry the firmware builds from LVGL primitives, so the design
-can be reviewed - and the arithmetic sanity-checked - without flashing the
-board.  Keep these constants in step with:
+Mirrors the geometry the firmware builds, so the design can be reviewed - and
+the arithmetic sanity-checked - without flashing the board.  Keep these
+constants in step with:
 
-  firmware/components/gauge/gauge.c            (layout maths)
+  firmware/components/gauge/gauge_render.c     (layout maths, dial centring)
   firmware/components/gauge/gauge_theme.c      (palette, tick geometry)
   firmware/components/gauge/gauge_presets.c    (ranges, captions)
 
@@ -24,9 +24,11 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO, "tools", "preview")
 
 SS = 3                      # supersample factor
-DIAL = 240                  # panel is 240x240
+PANEL_W = 320               # framebuffer
+PANEL_H = 240
+DIAL = 240                  # the dial itself is a 240 px circle, centred
 
-# ---- geometry, mirrors gauge.c / gauge_theme_greddy ----------------------
+# ---- geometry, mirrors gauge_render.c / gauge_theme_greddy ------------------
 BEZEL_W = 4
 BAND_GAP = 3
 BAND_W = 5
@@ -142,12 +144,13 @@ def angle_of(value: float, p: dict) -> float:
 
 def render(p: dict) -> Image.Image:
     th = p["theme"]
-    S = DIAL * SS
-    img = Image.new("RGB", (S, S), (14, 14, 16))
+    W, H = PANEL_W * SS, PANEL_H * SS
+    img = Image.new("RGB", (W, H), th["face"])
     d = ImageDraw.Draw(img)
 
     # the rail spans [RAIL_R - BAND_W, RAIL_R]; PIL strokes about a centre line
-    cx = cy = S / 2
+    cx = W / 2
+    cy = H / 2
     end = ROT + SWEEP
     rail_mid = (RAIL_R - BAND_W / 2) * SS
     band_w = BAND_W * SS
@@ -162,11 +165,11 @@ def render(p: dict) -> Image.Image:
     glow_w = BAND_W * 4 * SS
     for i in range(6, 0, -1):
         w = int(glow_w * i / 6)
-        overlay = Image.new("RGB", (S, S), (0, 0, 0))
+        overlay = Image.new("RGB", (W, H), (0, 0, 0))
         od = ImageDraw.Draw(overlay)
         od.arc([cx - rail_mid, cy - rail_mid, cx + rail_mid, cy + rail_mid], ROT, end,
                fill=th["band_glow"], width=w)
-        mask = Image.new("L", (S, S), 0)
+        mask = Image.new("L", (W, H), 0)
         ImageDraw.Draw(mask).arc([cx - rail_mid, cy - rail_mid, cx + rail_mid, cy + rail_mid],
                                  ROT, end, fill=int(90 / i), width=w)
         img = Image.composite(overlay, img, mask)
@@ -248,27 +251,29 @@ def render(p: dict) -> Image.Image:
     if p["unit"]:
         text_centered(d, (cx, cy + Y_UNIT * SS), p["unit"], f_unit, th["unit"], SS)
 
-    return img.resize((DIAL, DIAL), Image.LANCZOS)
+    return img.resize((PANEL_W, PANEL_H), Image.LANCZOS)
 
 
 def main() -> int:
     os.makedirs(OUT_DIR, exist_ok=True)
-    sheet = Image.new("RGB", (DIAL * len(PRESETS), DIAL), (14, 14, 16))
+    sheet = Image.new("RGB", (PANEL_W * len(PRESETS), PANEL_H), (0, 0, 0))
 
     for i, p in enumerate(PRESETS):
         img = render(p)
         path = os.path.join(OUT_DIR, f"dial_{p['id']}.png")
         img.save(path)
-        img.resize((DIAL * 2, DIAL * 2), Image.NEAREST).save(
+        img.resize((PANEL_W * 2, PANEL_H * 2), Image.NEAREST).save(
             os.path.join(OUT_DIR, f"dial_{p['id']}_2x.png"))
-        sheet.paste(img, (DIAL * i, 0))
+        sheet.paste(img, (PANEL_W * i, 0))
         print(f"preview : {path}")
 
     sheet_path = os.path.join(OUT_DIR, "dial_all.png")
-    sheet.resize((DIAL * len(PRESETS) * 2, DIAL * 2), Image.NEAREST).save(sheet_path)
+    sheet.resize((PANEL_W * len(PRESETS) * 2, PANEL_H * 2), Image.NEAREST).save(sheet_path)
     print(f"preview : {sheet_path}")
 
     print()
+    print(f"  panel          : {PANEL_W}x{PANEL_H}, dial centred at "
+          f"({PANEL_W // 2}, {PANEL_H // 2})")
     print(f"  rail radius    : {RAIL_R} px   (lv_scale widget {SCALE_D}x{SCALE_D})")
     print(f"  needle tip     : {NEEDLE_LEN} px")
     print(f"  numeral centre : {LABEL_R} px   "

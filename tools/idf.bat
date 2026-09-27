@@ -3,12 +3,10 @@ rem ---------------------------------------------------------------------------
 rem idf.bat - run any idf.py command with the ESP-IDF v5.5.5 environment loaded.
 rem
 rem   tools\idf.bat build
-rem   tools\idf.bat -p COM6 flash monitor
+rem   tools\idf.bat -p COM49 flash monitor
 rem   tools\idf.bat menuconfig
 rem
-rem Which project is built comes from IDF_PROJECT_DIR, defaulting to
-rem firmware\.  tools\test.ps1 points it at tests\device\ for the on-target
-rem suite.
+rem Which project is built comes from IDF_PROJECT_DIR, defaulting to firmware\.
 rem
 rem Override the install locations with IDF_PATH / IDF_TOOLS_PATH if yours live
 rem somewhere else.

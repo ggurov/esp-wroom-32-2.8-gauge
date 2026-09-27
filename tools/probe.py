@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """
-Identify the Waveshare ESP32-S3-LCD-1.28 on this machine.
+Identify the ESP32-2432S028R ("CYD") on this machine.
 
-The board cannot be auto-reset into the ROM bootloader (its CH343P DTR/RTS
-lines are not wired to EN/GPIO0), so this script does not try: it scans the
-serial ports, connects with --before no-reset, and reports whatever answers.
-
-The board must already be in download mode first:
-  * from the running firmware: type `bootloader` at the gauge> prompt
-  * from cold:                 hold BOOT, tap RESET, release BOOT
+The board's CH340 has DTR wired to GPIO0 and RTS to EN, so unlike the round
+board it can be reset into the ROM bootloader in software - this script just
+probes every likely serial port with the normal reset sequence.
 
 Run:  python tools/probe.py
 """
@@ -52,8 +48,7 @@ def candidate_ports() -> list[tuple[str, str]]:
 
 def probe(port: str) -> bool:
     print(f"\n--- probing {port} ---")
-    cmd = [sys.executable, "-m", "esptool", "--port", port,
-           "--before", "no-reset", "--after", "no-reset", "flash-id"]
+    cmd = [sys.executable, "-m", "esptool", "--port", port, "flash-id"]
     try:
         rc = subprocess.call(cmd)
     except KeyboardInterrupt:
@@ -71,17 +66,14 @@ def main() -> int:
     for dev, desc in ports:
         print(f"  {dev:<8} {desc}")
 
-    print("\nIf nothing responds below, put the board into download mode first:")
-    print("  from the app :  type `bootloader` at the gauge> prompt")
-    print("  from cold    :  hold BOOT, tap RESET, release BOOT")
-
     for dev, _ in ports:
         if probe(dev):
-            print(f"\nOK: {dev} is in the ROM bootloader and ready to flash.")
+            print(f"\nOK: {dev} is an Espressif chip and can be flashed:")
             print(f"    tools\\idf.bat -p {dev} flash monitor")
             return 0
 
-    print("\nNo ESP32 responded. The board is probably not in download mode.", file=sys.stderr)
+    print("\nNo ESP32 responded.  Try another cable or USB port, and remember "
+          "that opening a port resets this board.", file=sys.stderr)
     return 1
 
 

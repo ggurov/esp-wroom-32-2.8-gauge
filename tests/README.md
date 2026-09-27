@@ -9,8 +9,8 @@ tools\test.ps1 -Filter render   # only suites whose name contains "render"
 
 | Suite | Count | Needs hardware |
 |---|---|---|
-| Host unit tests (`tests/host`) | 81 | no |
-| Contract checks (`tests/py`) | 29 | no |
+| Host unit tests (`tests/host`) | 82 | no |
+| Contract checks (`tests/py`) | 33 | no |
 
 There is no on-target test app. The graphics layer talks to the panel through
 exactly one function, so stubbing that makes the framebuffer, the drawing
@@ -52,7 +52,7 @@ first on the include path.
 | `test_gauge_theme.c` | every theme produces a coherent dial: band fits the bezel, ticks hang inside the rail, the warning sector is inboard of the ticks, numerals clear both it and the hub |
 | `test_gauge_presets.c` | every preset is renderable: ordered ranges, tick budget fits the label storage, explicit labels match the tick count, generated labels fit their buffer, alarm band inside the range and wide enough to see |
 | `test_gfx.c` | the primitives: clipping at all four edges, disc/ring/circle geometry, arc band covers its sweep and nothing else, polygon fill, text ink and advance, blend endpoints |
-| `test_gauge_render.c` | the dial itself, rendered and inspected pixel by pixel: rail radius, warning sector inboard of the ticks, hub, needle direction at min/mid/max, needle never leaves the dial, read-out drawn, slew settles, layered geometry without overlaps |
+| `test_gauge_render.c` | the dial itself, rendered and inspected pixel by pixel: rail radius, warning sector inboard of the ticks, hub, needle direction at min/mid/max, needle never leaves the dial, read-out drawn, slew settles, layered geometry without overlaps, dial centred on the 320×240 rectangle |
 
 `test_gauge_render.c` is the one that earns its keep. It found a real bug where
 every glyph was drawn one ascent too low — on the panel that showed up as the
@@ -77,6 +77,8 @@ own generated artefacts. These are the assumptions that rot silently.
   bezel/band/tick/hub dimensions — so the host previews stay trustworthy.
 * **LVGL must not creep back in** — not a managed dependency, no `CONFIG_LV_*`
   in `sdkconfig.defaults`, no `#include "lvgl…"` anywhere.
+* **Every relative link in the docs must resolve**, and point at a file that is
+  actually tracked by git, so nothing 404s on GitHub.
 
 ## Adding a test
 
@@ -102,3 +104,16 @@ so the same mistake is not repeated:
 When a new test fails, check the expectation before changing the code — but
 check the code before changing the expectation, too. The text-placement failures
 above turned out to be a genuine firmware bug.
+
+## What the 320×240 port changed
+
+The dial is the same 240 px circle, centred in the wider panel. Three test
+adjustments came out of that:
+
+* `test_gfx.c`'s arc-band test now draws around `GFX_W/2, GFX_H/2` instead of a
+  hard-coded `120,120` (which used to coincide with the centre on the 240×240
+  panel).
+* `test_gauge_render.c` uses `GAUGE_DIAL_DIAMETER`, not `GFX_W`, for the rail
+  radius — passing the framebuffer width would have grown the dial to 320.
+* A new test pins the dial to the centre of the rectangle and checks the side
+  margins stay face-coloured.

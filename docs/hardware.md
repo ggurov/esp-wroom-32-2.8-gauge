@@ -2,233 +2,176 @@
 
 ## Identification
 
-Physically labelled **Waveshare "ESP32-S3-LCD-1.28"** (non-touch variant). The
-board presents itself over USB as a CH343P USB-to-UART bridge, so nothing about
-it is self-identifying until the chip is probed.
+Sold as a **DORHEA "ESP32 Touchscreen 2.8 Inch"** (ASIN B0D56Q7D91), the
+standard **ESP32-2432S028R** — the board the community calls the CYD. The
+listing describes an ILI9341 panel; the unit that arrived has an **ST7789V**.
+Both are supported, and telling them apart is a two-minute job with the
+bring-up screens (see "Fault 1" below).
 
 ### Enumeration on the host
 
 ```
-Ports   USB-Enhanced-SERIAL CH343 (COM6)   USB\VID_1A86&PID_55D3\58A6069520
+Ports   USB-SERIAL CH340 (COM49)   USB\VID_1A86&PID_7523\6&249D62&0&1
 ```
 
-`VID_1A86` is QinHeng (WCH), `PID_55D3` is the CH343. The sibling device on
-`COM49` is an unrelated CH340.
-
-There is **no native USB-Serial-JTAG interface**: the ESP32-S3's own USB pins
-(GPIO19/20) are not brought out to the Type-C connector, which is wired to the
-CH343P only.
+`VID_1A86` is QinHeng (WCH), `PID_7523` is the CH340. There is no native
+USB-Serial-JTAG interface; the Type-C/micro-USB connector is wired to the
+CH340 only.
 
 ### Chip probe
 
 ```
-Chip type:          ESP32-S3 (QFN56) (revision v0.2)
-Features:           Wi-Fi, BT 5 (LE), Dual Core + LP Core, 240MHz,
-                    Embedded PSRAM 2MB (AP_3v3)
+Chip type:          ESP32-D0WD-V3 (revision v3.1)
+Features:           Wi-Fi, BT, Dual Core, 240MHz, Vref calibration in eFuse
 Crystal frequency:  40MHz
-MAC:                3c:84:27:26:ca:ac
+MAC:                cc:7b:5c:f9:01:98
 
 Flash Memory Information:
-Manufacturer: ef
-Device:       4018
-Detected flash size: 16MB
-Flash type set in eFuse: quad (4 data lines)
-Flash voltage set by eFuse: 3.3V
+Manufacturer: c4            (GigaDevice)
+Device:       6016          (GD25Q32, 4 MB)
+Detected flash size: 4MB
+Flash voltage set by a strapping pin: 3.3V
 ```
 
 | | |
 |---|---|
-| Chip | ESP32-S3, QFN56, revision v0.2 |
-| Cores | 2× Xtensa LX7 @ 240 MHz + LP core |
+| Chip | ESP32-D0WD-V3, revision v3.1 |
+| Cores | 2× Xtensa LX6 @ 240 MHz |
 | Crystal | 40 MHz |
-| Flash | 16 MB, `ef`/`4018` = Winbond **W25Q128JV**, quad |
-| PSRAM | 2 MB in-package, quad, 3.3 V (`AP_3v3`) |
-| MAC | `3c:84:27:26:ca:ac` |
-| ROM bootloader | `esp32s3-20210327` |
+| Flash | 4 MB, GigaDevice GD25Q32, quad |
+| PSRAM | none (classic ESP32) |
+| MAC | `cc:7b:5c:f9:01:98` |
 
-The factory firmware in flash was crash-looping — booting into an
-`RTCWDT_RTC_RST` reset every ~1.5 s with no application output — so a fresh
-image had to be flashed before anything could be observed.
+### The factory demo
+
+The board ships with an Arduino sketch — TFT_eSPI + LVGL 8 (the standard
+`LVGL_Arduino` demo, built by vendor "JYC") — on a dual-app + SPIFFS partition
+table. The whole 4 MB flash was dumped to `backup/factory-demo-4mb.bin`
+(gitignored) before anything was written, so the demo can be restored.
 
 ## Pinout
 
-### Display — GC9A01A, 240×240 round IPS, 4-wire SPI
+### Display — ST7789V, 240×320, 4-wire SPI (driven landscape 320×240)
+
+| Signal | GPIO | Notes |
+|---|---|---|
+| LCD_SCK | 14 | |
+| LCD_MOSI | 13 | |
+| LCD_MISO | 12 | not needed for writes; left unused by the BSP |
+| LCD_CS | 15 | |
+| LCD_DC | 2 | |
+| LCD_RST | — | tied to the board's EN, hence `BSP_LCD_PIN_RST = -1` |
+| LCD_BL | 21 | LEDC PWM, active high |
+
+### Touch — XPT2046 resistive (its own SPI bus)
 
 | Signal | GPIO |
 |---|---|
-| LCD_DC | 8 |
-| LCD_CS | 9 |
-| LCD_CLK | 10 |
-| LCD_MOSI | 11 |
-| LCD_RST | 12 |
-| LCD_BL | 40 |
+| TOUCH_SCK | 25 |
+| TOUCH_MOSI | 32 |
+| TOUCH_MISO | 39 |
+| TOUCH_CS | 33 |
+| TOUCH_IRQ | 36 (input only, no internal pull-up) |
 
-### Other peripherals
+### Other peripherals (not used yet)
 
 | Function | GPIO | Notes |
 |---|---|---|
-| UART0 TXD | 43 | → CH343P, 115200 baud console |
-| UART0 RXD | 44 | ← CH343P |
+| UART0 TXD / RXD | 1 / 3 | → CH340, 115200 console |
 | BOOT button | 0 | boot strap, active low |
-| Battery sense | 1 | ADC, 200K/100K divider, `V = 3.3 / 4096 * 3 * raw` |
-| QMI8658 SDA | 6 | 6-axis IMU |
-| QMI8658 SCL | 7 | |
-| QMI8658 INT1 / INT2 | 47 / 48 | |
-| Touch INT | 5 | touch variant only |
+| RGB LED | 4 / 16 / 17 | R / G / B |
+| SD card | 18 / 19 / 23 / 5 | SCK / MISO / MOSI / CS |
+| Speaker | 26 | |
 
-Everything else is brought out on 1.27 mm pitch headers.
+## Flashing, and why it is easier than the round board
 
-## The panel init sequence matters
+The CH340's **DTR is wired to GPIO0** and **RTS to EN**, so esptool's normal
+reset sequences work:
 
-`esp_lcd_gc9a01` ships its own init table, but this board is driven with
-**Waveshare's sequence**, taken from their `ESP32-S3-LCD-1.28-Test` demo
-(`LCD_1in28.cpp`, `LCD_1IN28_InitReg`) and passed in through
-`gc9a01_vendor_config_t`. The two differ in the gate-driver settings:
+* `idf.py -p COM49 flash` enters the ROM bootloader by itself,
+* and `Hard resetting via RTS pin...` starts the new image afterwards.
 
-| Command | `esp_lcd_gc9a01` | Waveshare |
-|---|---|---|
-| `0x62`, `0x63` (GOA timing) | `0x38 …` | `0x18 …` |
-| `0xBD`, `0xBC` | absent | `0x06`, `0x00` |
-| `0x35` (tearing effect on) | absent | present |
-| `0x84` / `0x89` / `0x8D` / `0xC9` | `0x60` / `0x23` / `0x03` / `0x30` | `0x40` / `0x21` / `0x01` / `0x22` |
-| `0x74` byte 1 | `0x45` | `0x85` |
-| `0x3A` (COLMOD) | `0x55` | `0x05` |
+No button presses, no console command. The `bootloader` console command is kept
+only as a recovery path.
 
-`0x3A = 0x05` is the MCU-interface 16 bpp value; `0x55` is the RGB-interface
-value. Both appear to work, but there is no reason to deviate from the vendor.
+Two notes for the record:
 
-**Inversion:** Waveshare's sequence ends with `0x21` (INVON). Do **not** call
-`esp_lcd_panel_invert_color(panel, false)` after it — that sends `0x20`
-(INVOFF) and cancels it, leaving the display showing a photographic negative.
-This caught us out once.
+* **Opening the serial port resets the board.** Any terminal that asserts
+  DTR/RTS on open (pyserial does, `idf.py monitor` does) produces a boot. This
+  is normal here and is *not* a fault — during bring-up a few "phantom resets"
+  were chased before this was obvious. Wait ~2 s after opening a port before
+  judging the output.
+* The 4 MB flash is comfortable: the app is 367 KB and the table keeps a
+  factory slot plus 2 MB of SPIFFS.
 
-## Fault 1 — the display only painted part of the dial
+## Fault 1 — the panel showed a wrapped, frozen image
 
 ### Symptom
 
-Whole contiguous sectors of the dial stayed black, or were painted correctly
-and then went black a fraction of a second later. With the needle moving the
-missing region changed, which read as flickering; with the needle frozen the
-missing region stayed missing.
+The panel lit up but showed diagonal repeats of the dial content and a stale
+white band across the bottom quarter — the same frozen image on every boot,
+unaffected by `test fill` or any other screen. It looked exactly like an SPI
+address-window problem: content wrapping every 240 px and the last 80 rows of a
+320-row frame memory never written.
 
-### Root cause: LVGL
+### Root cause: the wrong controller driver
 
-The first version used LVGL 9.6 with partial-tile rendering. The decisive test
-was a **solid white fill drawn straight into the framebuffer**, bypassing LVGL
-entirely:
+The listing says ILI9341, so the BSP started there. The panel is an ST7789V.
+The two controllers share the command set that matters (SLPOUT, MADCTL, COLMOD,
+CASET/RASET, RAMWR), which is why something *recognisable* appeared at all —
+but the ILI9341 init table's power/gamma/vendor commands put the ST7789V into a
+state where the address window no longer behaves, producing the wrap.
 
-* with LVGL: large regions dark
-* without LVGL: the panel fills edge to edge, uniformly, brightness spread
-  0.06 out of 255
+Selecting the ST7789V driver under `menuconfig → Gauge BSP` produced a clean,
+correctly addressed dial immediately. `test fill` then fills the panel edge to
+edge, and `test quad` shows four clean quadrants.
 
-So the panel, the wiring and the power were all fine, and the fault was in
-LVGL's invalidate-and-repaint path. The firmware was rewritten around a plain
-framebuffer and the problem disappeared completely.
+**Lesson:** when a panel shows *structured* garbage (repeats, wraps, stale
+bands) rather than noise, suspect the controller driver before the clock or the
+wiring.
 
-### What was ruled out first
+## Fault 2 — red and blue were swapped
 
-Every one of these was tested on hardware, and none of them changed the
-missing regions:
+With the right controller the dial was coherent but the red needle and warning
+sector rendered blue. That is the **RGB vs BGR element order**: a single bit in
+MADCTL. This panel wants `LCD_RGB_ELEMENT_ORDER_RGB` (the BSP default for
+ST7789V); ILI9341 boards usually want BGR.
 
-| Changed | Effect |
-|---|---|
-| SPI clock 80 / 40 / 20 MHz | no change |
-| Backlight 35 / 60 / 100 % | no change (100 % removes PWM entirely) |
-| Refresh rate 2 / 5 / 10 / 20 / 30 fps | no change |
-| Sync flush (wait for DMA before releasing the buffer) | no change |
-| Full-frame render mode instead of partial tiles | **worse** — only the bezel drew |
-| Needle frozen vs animated | region changes only because the needle invalidates it |
-| Driver error counters | `flushes: 3629, driver errs: 0, timeouts: 0` |
+Shapes perfect, colours wrong → element order. Colours *inverted* (black shows
+white) → inversion.
 
-Two observations narrowed it down early:
+## Fault 3 — the image was a photographic negative
 
-1. **It happened with nothing being drawn.** With the simulator off and a fixed
-   value, LVGL had nothing invalidated and issued no flushes at all — the image
-   was static on our side — yet the region still went dark and stayed dark.
-2. **It was not a brownout.** A 40 s watch of the console saw zero spontaneous
-   reboots while the artefact was present.
+The IDF ST7789 example turns inversion on (`INVON`); this panel needs it off.
+The BSP only ever *sends* INVON when `BSP_LCD_INVERT_COLOR` is set — it never
+sends INVOFF to "fix" a panel, because on the round board that cancelled the
+vendor init sequence's own INVON and produced exactly this negative image. The
+verified setting for this unit is inversion **off**.
 
-## Fault 2 — flashing was unreliable
+## SPI clock
 
-### Symptom
+80 MHz was tested clean on this unit (dial and all four test screens, checked
+over a webcam) and gives 34.5 fps. 40 MHz is the conservative fallback if a
+different unit shows speckle or tearing; the BSP defaults live in
+`sdkconfig.defaults`.
 
-esptool could always identify the chip, read the MAC and read flash info, but
-large `write_flash` operations failed:
+An earlier "80 MHz garbles the panel" conclusion was wrong: that garbling was
+the ILI9341 driver on an ST7789V panel. With the right driver the clock is fine.
 
-| Single write size | Result |
-|---|---|
-| 16 KB | OK, hash verified, every time |
-| 32 KB | `No more data to read from the serial port` |
-| 64 KB | same |
-| 128 KB | could not even reconnect afterwards |
-| 869 KB (the app) | died at 3.9 %, just after the first 16 KB block |
+## Power
 
-The failure point was deterministic — always the same byte — and afterwards the
-chip hung: no UART output, no answer to esptool, only a physical RESET
-recovered it. Holding BOOT did not help, because the chip was hanging rather
-than resetting.
-
-### Root cause: the USB cable
-
-**A change of cable fixed it completely.** With a USB-C cable running straight
-from the motherboard, a full 869 KB flash takes 11 seconds and verifies. The
-earlier cable (via an extension) was marginal: enough for enumeration and small
-transfers, not enough for sustained ones.
-
-Two red herrings on the way:
-
-* `rst:0xf (BROWNOUT_RST)` did appear during image hashing, and it is real, but
-  it was a symptom of the same marginal link rather than an independent fault.
-  Reducing the flash frequency to 40 MHz, the LCD clock to 20 MHz, the backlight
-  to 35 % and the image size by 61 % did not move the 16 KB boundary.
-* A baud-change theory (esptool's stub left listening at a raised baud) was
-  tested by flashing at 115200 throughout — it failed identically.
-
-`tools/flash_chunked.py` splits an image into 16 KB pieces and hands them to
-esptool as separate regions in a single invocation, which is the closest thing
-to a workaround if a marginal cable is ever unavoidable.
-
-## The reset lines, correctly
-
-An early conclusion here was wrong and is worth stating correctly, because it
-determines the whole flashing workflow:
-
-| Line | Wired to | Consequence |
-|---|---|---|
-| DTR | **nothing** | cannot enter download mode in software |
-| RTS | `EN` | esptool *can* reset the chip after flashing |
-
-Evidence for DTR: all 16 combinations of the two control lines were driven, with
-a 3 s listen after each transition, and none produced the ROM's download-mode
-banner (`waiting for download` / `boot:0x10 (DOWNLOAD(UART0))`).
-
-Evidence for RTS: `idf.py flash` ends with `Hard resetting via RTS pin...` and
-the chip reliably leaves the bootloader and runs the new image afterwards.
-
-So the rule is:
-
-* **entering** download mode needs the physical BOOT button, or the firmware's
-  own `bootloader` console command
-* **leaving** it is automatic — esptool handles that itself
-
-The firmware's `bootloader` command sets `RTC_CNTL_FORCE_DOWNLOAD_BOOT` and
-calls `esp_restart()`, which the ROM honours:
-
-```
-gauge> bootloader
-Rebooting into ROM download mode...
-rst:0xc (RTC_SW_CPU_RST),boot:0x10 (DOWNLOAD(USB/UART0))
-waiting for download
-```
-
-That is the normal flashing path and needs no buttons at all.
+The board is powered from the PC over USB. The Amazon listing warns to use a 5 V
+charger rather than a PC port, and this is worth remembering: a full-white
+`test fill` at 60 % backlight pulls enough current to brown out a marginal hub.
+The dial itself (mostly black) is far lighter and runs indefinitely.
 
 ## Notes for later
 
-* **PSRAM** is present but disabled in `sdkconfig.defaults`. The framebuffer is
-  115 KB and there is ~240 KB of internal heap free, so nothing needs it yet.
-  Enable with `CONFIG_SPIRAM=y` when assets start to.
-* **JTAG** is not usable over the Type-C port. The ESP32-S3's default JTAG pins
-  are GPIO39–42, and GPIO40 is the backlight, so on-chip debugging would need a
-  remap or bodging to the 1.27 mm headers. OpenOCD and GDB are installed and
-  ready if that changes; the console is the practical debug channel today.
+* **No PSRAM** on the classic ESP32. The framebuffer is 150 KB static, and
+  there is ~190 KB of internal heap free with a 110 KB largest block — enough
+  for the gauge, not for a second full-size framebuffer.
+* **SD card** and the **RGB LED** are wired but unused; their pins are listed
+  above so nothing collides later.
+* **Touch calibration** is a linear map in `app_touch.c` with wide defaults;
+  `touch watch` prints raw samples if a particular unit needs different
+  numbers. NVS persistence is on the roadmap.
