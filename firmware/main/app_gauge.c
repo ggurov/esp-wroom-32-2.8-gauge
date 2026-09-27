@@ -52,6 +52,9 @@ static TaskHandle_t          s_task;
 static bool                  s_running;      /* task alive */
 static bool                  s_demo = true;
 static bool                  s_visible = true;
+/* true while the task is NOT touching the framebuffer/SPI, so a test screen
+ * can take over without racing the panel transfer */
+static volatile bool         s_idle = true;
 
 static uint32_t s_elapsed_ms;
 static size_t   s_step;
@@ -101,9 +104,11 @@ static void gauge_task(void *arg)
         const uint32_t dt_ms = (uint32_t)(dt * 1000.0f);
 
         if (!s_gauge || !s_visible) {
+            s_idle = true;
             continue;
         }
 
+        s_idle = false;
         const gauge_config_t *cfg = gauge_render_config(s_gauge);
 
         if (!s_demo) {
@@ -168,6 +173,8 @@ static void gauge_task(void *arg)
             snprintf(buf, sizeof(buf), "%.1f fps", (double)s_fps);
             gauge_render_set_status(s_gauge, buf);
         }
+
+        s_idle = true;
     }
 }
 
@@ -202,6 +209,12 @@ void app_gauge_start(void)
 void app_gauge_stop(void)
 {
     s_visible = false;
+    /* Wait for the frame in flight to finish: the test screens drive the same
+     * SPI panel, and two tasks inside esp_lcd_panel_draw_bitmap at once is a
+     * reset waiting to happen. */
+    for (int i = 0; i < 50 && !s_idle; i++) {
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
 }
 
 void app_gauge_select(const gauge_preset_t *preset)

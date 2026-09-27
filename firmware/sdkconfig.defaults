@@ -36,8 +36,20 @@ CONFIG_ESP_CONSOLE_UART_NUM=0
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
 # --- Display -----------------------------------------------------------------
+# Verified on the board this project was brought up on: the "2.8 inch" panel
+# is an ST7789V, not the ILI9341 the listing claims.  RGB element order,
+# landscape via swap_xy + mirror X, no INVON.
+CONFIG_BSP_PANEL_ST7789=y
+# CONFIG_BSP_PANEL_ILI9341 is not set
+CONFIG_BSP_LCD_SWAP_XY=y
+CONFIG_BSP_LCD_MIRROR_X=y
+# CONFIG_BSP_LCD_MIRROR_Y is not set
+# CONFIG_BSP_LCD_INVERT_COLOR is not set
+# CONFIG_BSP_LCD_RGB_ORDER_BGR is not set
+
 # The panel is rated well past 40 MHz; a full 320x240 RGB565 frame is 150 KB,
-# so the SPI clock is the frame-rate ceiling.  40 MHz gives about 31 ms per
-# frame (32 fps), 80 MHz about 15 ms (60 fps).
-CONFIG_BSP_LCD_SPI_CLK_MHZ=40
+# so the SPI clock is the frame-rate ceiling.  Verified on this board: 80 MHz
+# gives a clean image and ~33 fps; 40 MHz is the safe fallback if a particular
+# unit shows speckle or tearing.
+CONFIG_BSP_LCD_SPI_CLK_MHZ=80
 CONFIG_BSP_BACKLIGHT_DEFAULT_PERCENT=60

@@ -245,7 +245,16 @@ esp_err_t bsp_display_init(void)
 
     esp_lcd_panel_dev_config_t dev_cfg = {
         .reset_gpio_num = LCD_PIN_RST,
+        /*
+         * Element order is a property of the panel wiring, not the controller:
+         * get it wrong and red and blue swap while shapes stay perfect.  The
+         * verified values for this board are in Kconfig / sdkconfig.defaults.
+         */
+#ifdef CONFIG_BSP_LCD_RGB_ORDER_BGR
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+#else
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+#endif
         .bits_per_pixel = 16,
     };
 #if CONFIG_BSP_PANEL_ILI9341

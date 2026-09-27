@@ -4,10 +4,13 @@ menu "LCD (2.8 inch 240x320 SPI)"
 
 choice BSP_PANEL
     prompt "Panel controller"
-    default BSP_PANEL_ILI9341
+    default BSP_PANEL_ST7789
     help
         The ESP32-2432S028R ships with one of two controllers.  Both are
         driven through the same esp_lcd API; only the init table differs.
+        The 2.8" board this project was brought up on has an ST7789V, despite
+        the listing claiming an ILI9341 - if the panel stays black or shows
+        noise, try the other one.
 
 config BSP_PANEL_ILI9341
     bool "ILI9341"
@@ -16,6 +19,14 @@ config BSP_PANEL_ST7789
     bool "ST7789V"
 
 endchoice
+
+config BSP_LCD_RGB_ORDER_BGR
+    bool "BGR element order (else RGB)"
+    default y if BSP_PANEL_ILI9341
+    default n
+    help
+        Wrong order swaps red and blue while leaving shapes perfect.  The
+        verified value for this board's ST7789V is RGB (off).
 
 config BSP_LCD_SPI_HOST
     int "SPI peripheral (1 = SPI2/HSPI, 2 = SPI3/VSPI)"
@@ -70,12 +81,12 @@ config BSP_LCD_SWAP_RGB565_BYTES
 
 config BSP_LCD_INVERT_COLOR
     bool "Invert colours (INVON)"
-    default y if BSP_PANEL_ST7789
     default n
     help
-        Enable if the image looks like a photographic negative.  The BSP only
-        ever sends INVON, never INVOFF, so the panel's own init sequence is
-        left alone when this is off.
+        Enable if the image looks like a photographic negative.  The verified
+        value for this board's ST7789V is off.  The BSP only ever sends INVON,
+        never INVOFF, so the panel's own init sequence is left alone when this
+        is off.
 
 config BSP_LCD_SWAP_XY
     bool "Swap X/Y (landscape)"
