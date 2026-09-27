@@ -36,6 +36,15 @@ static inline uint16_t gfx_hex(uint32_t rgb)
 /* Blends `fg` over `bg`; 0 = bg, 255 = fg.  Used for the glow and dim text. */
 uint16_t gfx_blend(uint16_t bg, uint16_t fg, uint8_t alpha);
 
+/*
+ * Cosine/sine of an integer angle in degrees, gfx convention (0 = 3 o'clock,
+ * angles increase clockwise).  Backed by a 360-entry table: the renderers call
+ * these hundreds of times per frame and libm's sinf/cosf are soft-float on the
+ * ESP32.
+ */
+float gfx_cos_deg(int deg);
+float gfx_sin_deg(int deg);
+
 void gfx_init(void);
 uint16_t *gfx_framebuffer(void);
 

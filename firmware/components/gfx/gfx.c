@@ -43,6 +43,38 @@ uint16_t gfx_blend(uint16_t bg, uint16_t fg, uint8_t alpha)
 }
 
 /* -------------------------------------------------------------------------- */
+/* integer-degree trigonometry                                                */
+/* -------------------------------------------------------------------------- */
+
+static float s_sin_tab[360];
+static bool  s_trig_ready;
+
+float gfx_sin_deg(int deg)
+{
+    if (!s_trig_ready) {
+        for (int i = 0; i < 360; i++) {
+            s_sin_tab[i] = sinf((float)i * (float)M_PI / 180.0f);
+        }
+        s_trig_ready = true;
+    }
+    deg %= 360;
+    if (deg < 0) {
+        deg += 360;
+    }
+    return s_sin_tab[deg];
+}
+
+float gfx_cos_deg(int deg)
+{
+    return gfx_sin_deg(deg + 90);
+}
+
+static inline int iroundf(float v)
+{
+    return (int)(v >= 0.0f ? v + 0.5f : v - 0.5f);
+}
+
+/* -------------------------------------------------------------------------- */
 
 void gfx_clear(uint16_t colour)
 {
@@ -375,30 +407,29 @@ void gfx_arc_band(int cx, int cy, int r_outer, int r_inner, int a0, int a1,
     while (sweep < 0) {
         sweep += 360;
     }
-    if (sweep == 0) {
+    if (sweep == 0 || sweep > 360) {
         sweep = 360;
     }
 
     /* Two degrees per slice: at the radii this gauge uses that is under 4 px of
-     * chord, so the band reads as a smooth arc. */
-    const int slices = (sweep + 1) / 2;
-    const float step = (float)sweep / (float)slices;
+     * chord, so the band reads as a smooth arc.  Integer angles let the slice
+     * endpoints come from the trig table instead of libm. */
+    const int end = a0 + sweep;
+    for (int d = a0; d < end; d += 2) {
+        const int d1 = (d + 2 <= end) ? d + 2 : end;
 
-    for (int i = 0; i < slices; i++) {
-        const float d0 = (float)a0 + step * (float)i;
-        const float d1 = d0 + step;
-        const float r0 = d0 * (float)M_PI / 180.0f;
-        const float r1 = d1 * (float)M_PI / 180.0f;
+        const float c0 = gfx_cos_deg(d), s0 = gfx_sin_deg(d);
+        const float c1 = gfx_cos_deg(d1), s1 = gfx_sin_deg(d1);
 
         int px[4], py[4];
-        px[0] = cx + (int)lroundf((float)r_outer * cosf(r0));
-        py[0] = cy + (int)lroundf((float)r_outer * sinf(r0));
-        px[1] = cx + (int)lroundf((float)r_outer * cosf(r1));
-        py[1] = cy + (int)lroundf((float)r_outer * sinf(r1));
-        px[2] = cx + (int)lroundf((float)r_inner * cosf(r1));
-        py[2] = cy + (int)lroundf((float)r_inner * sinf(r1));
-        px[3] = cx + (int)lroundf((float)r_inner * cosf(r0));
-        py[3] = cy + (int)lroundf((float)r_inner * sinf(r0));
+        px[0] = cx + iroundf((float)r_outer * c0);
+        py[0] = cy + iroundf((float)r_outer * s0);
+        px[1] = cx + iroundf((float)r_outer * c1);
+        py[1] = cy + iroundf((float)r_outer * s1);
+        px[2] = cx + iroundf((float)r_inner * c1);
+        py[2] = cy + iroundf((float)r_inner * s1);
+        px[3] = cx + iroundf((float)r_inner * c0);
+        py[3] = cy + iroundf((float)r_inner * s0);
         gfx_fill_polygon(px, py, 4, colour);
     }
 }

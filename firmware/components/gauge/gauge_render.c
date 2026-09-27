@@ -67,11 +67,18 @@ static float scale_angle(const gauge_render_t *g, float value)
     return gauge_math_value_to_angle(&g->scale, value) - 90.0f;
 }
 
+static inline int iround(float v)
+{
+    return (int)(v >= 0.0f ? v + 0.5f : v - 0.5f);
+}
+
 static void polar(float cx, float cy, float r, float deg, int *x, int *y)
 {
-    const float rad = deg * (float)M_PI / 180.0f;
-    *x = (int)lroundf(cx + r * cosf(rad));
-    *y = (int)lroundf(cy + r * sinf(rad));
+    /* integer degrees: gfx_cos_deg/sin_deg are table lookups, where cosf/sinf
+     * are soft-float on the ESP32 and the dial needs ~1000 of them per frame */
+    const int d = iround(deg);
+    *x = iround(cx + r * gfx_cos_deg(d));
+    *y = iround(cy + r * gfx_sin_deg(d));
 }
 
 /* Text is placed on cap height (see gfx_text.h), so line_height is not used. */
@@ -125,20 +132,20 @@ static void draw_ticks(gauge_render_t *g)
          * towards the centre, like the old GReddy dials, rather than plain
          * bars.
          */
-        const float rad = deg * (float)M_PI / 180.0f;
-        const float ux = cosf(rad), uy = sinf(rad);   /* outward */
-        const float vx = -uy, vy = ux;                /* across   */
+        const int d = iround(deg);
+        const float ux = gfx_cos_deg(d), uy = gfx_sin_deg(d);   /* outward */
+        const float vx = -uy, vy = ux;                          /* across  */
         const float w = (float)th->tick_major_width;
         const float r_base = (float)g->r_tick_base;
         const float r_tip = r_base - (float)g->tick_major_len;
 
         int px[3], py[3];
-        px[0] = CX + (int)lroundf(r_base * ux + w * vx);
-        py[0] = CY + (int)lroundf(r_base * uy + w * vy);
-        px[1] = CX + (int)lroundf(r_base * ux - w * vx);
-        py[1] = CY + (int)lroundf(r_base * uy - w * vy);
-        px[2] = CX + (int)lroundf(r_tip * ux);
-        py[2] = CY + (int)lroundf(r_tip * uy);
+        px[0] = iround(CX + r_base * ux + w * vx);
+        py[0] = iround(CY + r_base * uy + w * vy);
+        px[1] = iround(CX + r_base * ux - w * vx);
+        py[1] = iround(CY + r_base * uy - w * vy);
+        px[2] = iround(CX + r_tip * ux);
+        py[2] = iround(CY + r_tip * uy);
         gfx_fill_polygon(px, py, 3, colour);
     }
 }
@@ -177,10 +184,9 @@ static void draw_numerals(gauge_render_t *g)
 static void draw_needle(gauge_render_t *g)
 {
     const gauge_theme_t *th = g->cfg.theme;
-    const float deg = scale_angle(g, g->displayed);
-    const float rad = deg * (float)M_PI / 180.0f;
-    const float ux = cosf(rad), uy = sinf(rad);      /* along the needle */
-    const float vx = -uy, vy = ux;                   /* perpendicular     */
+    const int deg = iround(scale_angle(g, g->displayed));
+    const float ux = gfx_cos_deg(deg), uy = gfx_sin_deg(deg);   /* along the needle */
+    const float vx = -uy, vy = ux;                              /* perpendicular     */
 
     const float L = (float)g->needle_len;
     const float hb = 5.0f;     /* half width at the hub */
@@ -194,8 +200,8 @@ static void draw_needle(gauge_render_t *g)
 
     int px[6], py[6];
     for (int i = 0; i < 6; i++) {
-        px[i] = CX + (int)lroundf(pts[i][0] * vx + pts[i][1] * ux);
-        py[i] = CY + (int)lroundf(pts[i][0] * vy + pts[i][1] * uy);
+        px[i] = iround(CX + (pts[i][0] * vx + pts[i][1] * ux));
+        py[i] = iround(CY + (pts[i][0] * vy + pts[i][1] * uy));
     }
     gfx_fill_polygon(px, py, 6, gfx_hex(th->needle));
 }
