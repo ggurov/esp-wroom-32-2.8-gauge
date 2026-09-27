@@ -3,6 +3,7 @@ set(COMPONENT_SRCS
     "app_console.c"
     "app_tests.c"
     "app_gauge.c"
+    "app_touch.c"
 )
 
 idf_component_register(

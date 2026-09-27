@@ -6,6 +6,9 @@ firmware/sdkconfig.old
 firmware/dependencies.lock
 *.bin.tmp
 
+# Factory demo flash dump (kept locally for restoring the vendor image)
+backup/
+
 # Host build output
 /build/
 

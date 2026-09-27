@@ -3,9 +3,12 @@
  *
  * Same separation as before: gauge_math/theme/presets hold the numbers and the
  * look, this turns them into pixels.  It redraws the whole dial each frame -
- * at 240x240 that costs a couple of milliseconds, far less than the SPI
- * transfer, and it means there is no cached state to get out of step with the
- * panel.
+ * at 320x240 that still costs well under the SPI transfer, and it means there
+ * is no cached state to get out of step with the panel.
+ *
+ * The dial itself is round and unchanged from the 1.28" board: a
+ * GAUGE_DIAL_DIAMETER circle centred in the wider 320x240 panel, with black
+ * margins either side.
  */
 #pragma once
 
@@ -16,6 +19,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Diameter of the circular dial, centred in the framebuffer. */
+#define GAUGE_DIAL_DIAMETER 240
 
 typedef struct gauge_render gauge_render_t;
 

@@ -1,25 +1,26 @@
 # ---------------------------------------------------------------------------
-# Waveshare ESP32-S3-LCD-1.28  (ESP32-S3R2, 16 MB flash, 2 MB in-package PSRAM)
+# ESP32-2432S028R ("CYD"): ESP32-D0WD-V3, 4 MB flash, 2.8" 320x240 SPI panel,
+# XPT2046 resistive touch, CH340 over UART0.
 #
 # No graphics library.  The gauge draws into a plain RGB565 framebuffer in the
-# gfx component; see README.md for why LVGL was dropped.
+# gfx component; see README.md for why LVGL is not used.
 # ---------------------------------------------------------------------------
-CONFIG_IDF_TARGET="esp32s3"
+CONFIG_IDF_TARGET="esp32"
 
-# --- Flash: Winbond W25Q128JV, 16 MB, quad -----------------------------------
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+# --- Flash: GigaDevice GD25Q32, 4 MB, quad, 40 MHz ---------------------------
+# 80 MHz usually works on this board; 40 is the safe default.  Raise it under
+# `idf.py menuconfig -> Serial flasher config` once a full app has flashed
+# cleanly.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
-CONFIG_ESPTOOLPY_BEFORE_RESET=y
-CONFIG_ESPTOOLPY_AFTER_RESET=y
 CONFIG_ESPTOOLPY_MONITOR_BAUD=115200
-# esptool cannot reset this board into the bootloader (DTR is not wired to the
-# boot strap), so do not waste time on a reset sequence that goes nowhere.
-# Use the `bootloader` console command instead.
-CONFIG_ESPTOOLPY_BEFORE_NORESET=y
 
 # --- Partition table ---------------------------------------------------------
-# A factory slot plus two OTA slots; see partitions.csv.
+# A factory slot plus a storage partition; see partitions.csv.  The board
+# auto-downloads over the CH340's DTR/RTS lines, so there is no need for the
+# round board's `bootloader` workaround - but the console command stays as a
+# recovery path.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
@@ -28,20 +29,15 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 
-# --- Console on UART0 (routed to the CH343P -> COM port) ---------------------
+# --- Console on UART0 (CH340 -> COM port) ------------------------------------
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 CONFIG_ESP_CONSOLE_UART_NUM=0
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
-# --- PSRAM -------------------------------------------------------------------
-# Present (2 MB, in-package, quad) but not needed: the framebuffer is 115 KB
-# and there is ~240 KB of internal heap free.  Enable if assets ever need it.
-CONFIG_SPIRAM=n
-
 # --- Display -----------------------------------------------------------------
-# The panel is rated to 80 MHz.  A full 240x240 RGB565 frame is 115 KB, so the
-# SPI clock is the frame-rate ceiling: 40 MHz gives about 23 ms per frame,
-# 80 MHz about 11.5 ms.  Raise the backlight with `backlight 100`.
-CONFIG_BSP_LCD_SPI_CLK_MHZ=80
+# The panel is rated well past 40 MHz; a full 320x240 RGB565 frame is 150 KB,
+# so the SPI clock is the frame-rate ceiling.  40 MHz gives about 31 ms per
+# frame (32 fps), 80 MHz about 15 ms (60 fps).
+CONFIG_BSP_LCD_SPI_CLK_MHZ=40
 CONFIG_BSP_BACKLIGHT_DEFAULT_PERCENT=60

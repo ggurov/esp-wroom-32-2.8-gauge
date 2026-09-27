@@ -1,12 +1,13 @@
 /*
- * gfx.h - a 240x240 RGB565 framebuffer and just enough primitives to draw an
+ * gfx.h - a 320x240 RGB565 framebuffer and just enough primitives to draw an
  * instrument.
  *
- * No graphics library: LVGL cost 869 KB of firmware and did not render this
- * panel any better than direct drawing does.  Everything here writes into one
- * buffer which is pushed to the panel when a frame is finished.
+ * No graphics library: LVGL cost 869 KB of firmware on the round board and did
+ * not render that panel any better than direct drawing does.  Everything here
+ * writes into one buffer which is pushed to the panel when a frame is finished.
  *
- * Coordinates are 0..239 with y increasing downwards.  All primitives clip.
+ * Coordinates are 0..319 across, 0..239 down, with y increasing downwards.
+ * All primitives clip.
  */
 #pragma once
 
@@ -17,7 +18,7 @@
 extern "C" {
 #endif
 
-#define GFX_W 240
+#define GFX_W 320
 #define GFX_H 240
 
 /* Pack 8-bit components into the panel's RGB565. */

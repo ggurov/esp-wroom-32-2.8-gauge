@@ -2,8 +2,8 @@
  * gfx.c - framebuffer and drawing primitives.
  *
  * Everything is deliberately simple and integer-only.  No anti-aliasing: at
- * 240x240 with 3-4 px features on a small round panel it is not visible, and
- * skipping it keeps the code small and fast.
+ * 320x240 with 3-4 px features it is not visible, and skipping it keeps the
+ * code small and fast.
  */
 #include "gfx.h"
 
@@ -12,7 +12,7 @@
 
 #include "bsp.h"
 
-static uint16_t s_fb[GFX_W * GFX_H];
+static uint16_t s_fb[GFX_W * GFX_H] __attribute__((aligned(4)));
 static uint32_t s_frames;
 static uint32_t s_pixels;
 
@@ -46,8 +46,16 @@ uint16_t gfx_blend(uint16_t bg, uint16_t fg, uint8_t alpha)
 
 void gfx_clear(uint16_t colour)
 {
-    for (int i = 0; i < GFX_W * GFX_H; i++) {
-        s_fb[i] = colour;
+    /* Two pixels per store: on a 240 MHz ESP32 the whole-screen clear is a
+     * measurable slice of the frame, and this halves it. */
+    uint32_t *pairs = (uint32_t *)s_fb;
+    const uint32_t both = ((uint32_t)colour << 16) | colour;
+    const int pairs_count = (GFX_W * GFX_H) / 2;
+    for (int i = 0; i < pairs_count; i++) {
+        pairs[i] = both;
+    }
+    if ((GFX_W * GFX_H) & 1) {
+        s_fb[GFX_W * GFX_H - 1] = colour;
     }
 }
 
@@ -105,10 +113,22 @@ void gfx_fill_rect(int x0, int y0, int x1, int y1, uint16_t colour)
     if (y0 < 0) y0 = 0;
     if (x1 >= GFX_W) x1 = GFX_W - 1;
     if (y1 >= GFX_H) y1 = GFX_H - 1;
+
+    const uint32_t both = ((uint32_t)colour << 16) | colour;
     for (int y = y0; y <= y1; y++) {
         uint16_t *row = &s_fb[y * GFX_W];
-        for (int x = x0; x <= x1; x++) {
-            row[x] = colour;
+        int x = x0;
+        while (x <= x1 && (((uintptr_t)(row + x)) & 3u)) {
+            row[x++] = colour;
+        }
+        uint32_t *pairs = (uint32_t *)(row + x);
+        const int n = (x1 - x + 1) / 2;
+        for (int i = 0; i < n; i++) {
+            pairs[i] = both;
+        }
+        x += n * 2;
+        while (x <= x1) {
+            row[x++] = colour;
         }
     }
 }

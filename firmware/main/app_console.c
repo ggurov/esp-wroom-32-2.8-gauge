@@ -1,10 +1,10 @@
 /*
- * app_console.c - interactive console on the CH343P UART (UART0, 115200).
+ * app_console.c - interactive console on the CH340 UART (UART0, 115200).
  *
- * This is the board's lifeline.  The Waveshare ESP32-S3-LCD-1.28 has no
- * software path into the ROM bootloader (DTR is not wired to the boot strap),
- * so without the `bootloader` command every reflash would need a physical
- * BOOT + RESET press.  With it, reflashing is completely hands-free.
+ * This is the board's lifeline: the REPL comes up before the display, so a
+ * dead panel can never lock you out.  The CYD auto-downloads over the CH340's
+ * DTR/RTS lines, so reflashing normally needs no console command at all - but
+ * `bootloader` stays as a recovery path.
  */
 #include "app_console.h"
 
@@ -14,6 +14,7 @@
 
 #include "app_gauge.h"
 #include "app_tests.h"
+#include "app_touch.h"
 #include "bsp.h"
 #include "esp_console.h"
 #include "esp_heap_caps.h"
@@ -177,6 +178,40 @@ static int cmd_fps(int argc, char **argv)
     printf("delivered frame rate: %.1f fps  (readout %s)\n",
            (double)app_gauge_fps(),
            app_gauge_stats_shown() ? "shown" : "hidden");
+    uint32_t render_us = 0, flush_us = 0;
+    app_gauge_timing(&render_us, &flush_us);
+    printf("last frame: %.1f ms render + %.1f ms panel flush\n",
+           (double)render_us / 1000.0, (double)flush_us / 1000.0);
+    return 0;
+}
+
+static int cmd_touch(int argc, char **argv)
+{
+    if (argc >= 2 && strcmp(argv[1], "watch") == 0) {
+        const int seconds = (argc >= 3) ? atoi(argv[2]) : 10;
+        printf("Watching touch for up to %d s - tap or hold the panel.\n", seconds);
+        printf("    raw x    raw y   ->  screen x  screen y  state\n");
+        for (int i = 0; i < seconds * 10; i++) {
+            int rx, ry, sx, sy;
+            bool pressed;
+            app_touch_last_raw(&rx, &ry, &pressed);
+            app_touch_last_screen(&sx, &sy, &pressed);
+            printf("  %6d   %6d   ->   %6d    %6d   %s\n",
+                   rx, ry, sx, sy, pressed ? "down" : "up");
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        printf("done (%u taps so far)\n", app_touch_tap_count());
+        return 0;
+    }
+
+    int rx, ry, sx, sy;
+    bool pressed;
+    app_touch_last_raw(&rx, &ry, &pressed);
+    app_touch_last_screen(&sx, &sy, &pressed);
+    printf("raw %d,%d -> screen %d,%d (%s), %u taps\n",
+           rx, ry, sx, sy, pressed ? "down" : "up", app_touch_tap_count());
+    printf("`touch watch [s]` prints live samples for calibration.\n");
     return 0;
 }
 
@@ -198,12 +233,17 @@ static int cmd_version(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-    printf("round-1.28-gauge  |  ESP-IDF %s  |  no graphics library\n",
+    printf("esp-wroom-32-2.8-gauge  |  ESP-IDF %s  |  no graphics library\n",
            esp_get_idf_version());
     printf("Target: %s   Cores: %d   CPU: %d MHz (configured)\n",
            CONFIG_IDF_TARGET, portNUM_PROCESSORS, CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
-    printf("Panel: %dx%d GC9A01A, %d MHz SPI, Waveshare vendor init\n",
-           BSP_LCD_H_RES, BSP_LCD_V_RES, CONFIG_BSP_LCD_SPI_CLK_MHZ);
+#if CONFIG_BSP_PANEL_ILI9341
+    const char *panel = "ILI9341";
+#else
+    const char *panel = "ST7789V";
+#endif
+    printf("Panel: %dx%d %s, %d MHz SPI, landscape\n",
+           BSP_LCD_H_RES, BSP_LCD_V_RES, panel, CONFIG_BSP_LCD_SPI_CLK_MHZ);
     return 0;
 }
 
@@ -236,6 +276,7 @@ esp_err_t app_console_start(void)
         { .command = "value", .help = "Drive the needle: value <number>", .func = &cmd_value },
         { .command = "fps", .help = "Frame rate: fps [on|off]", .func = &cmd_fps },
         { .command = "backlight", .help = "Backlight: backlight [0-100]", .func = &cmd_backlight },
+        { .command = "touch", .help = "Touch state: touch [watch [seconds]]", .func = &cmd_touch },
         { .command = "flush", .help = "Show panel transfer statistics", .func = &cmd_flush },
         { .command = "free", .help = "Show heap usage", .func = &cmd_free },
         { .command = "version", .help = "Show build information", .func = &cmd_version },

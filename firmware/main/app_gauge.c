@@ -64,6 +64,8 @@ static float    s_manual;
 static int64_t  s_last_frame_us;
 static float    s_fps;
 static bool     s_show_stats = true;
+static volatile uint32_t s_render_us;
+static volatile uint32_t s_flush_us;
 
 /* -------------------------------------------------------------------------- */
 
@@ -136,8 +138,15 @@ static void gauge_task(void *arg)
             gauge_render_set_value(s_gauge, value);
         }
 
+        /* split the frame time so the console can show where it goes:
+         * render (CPU, into the framebuffer) vs flush (SPI to the panel) */
+        const int64_t render_start = esp_timer_get_time();
         gauge_render_tick(s_gauge, dt);
+        const int64_t flush_start = esp_timer_get_time();
         gfx_flush();
+        const int64_t flush_end = esp_timer_get_time();
+        s_render_us = (uint32_t)(flush_start - render_start);
+        s_flush_us = (uint32_t)(flush_end - flush_start);
 
         /*
          * Frame rate is measured from the interval between completed frames,
@@ -221,6 +230,22 @@ const gauge_preset_t *app_gauge_current(void)
     return s_preset;
 }
 
+void app_gauge_next(void)
+{
+    const int count = gauge_presets_count();
+    if (count < 1) {
+        return;
+    }
+    int index = 0;
+    for (int i = 0; i < count; i++) {
+        if (gauge_preset_at(i) == s_preset) {
+            index = i;
+            break;
+        }
+    }
+    app_gauge_select(gauge_preset_at((index + 1) % count));
+}
+
 void app_gauge_set_demo(bool on)
 {
     s_demo = on;
@@ -262,4 +287,10 @@ void app_gauge_show_stats(bool on)
 bool app_gauge_stats_shown(void)
 {
     return s_show_stats;
+}
+
+void app_gauge_timing(uint32_t *render_us, uint32_t *flush_us)
+{
+    if (render_us) *render_us = s_render_us;
+    if (flush_us) *flush_us = s_flush_us;
 }

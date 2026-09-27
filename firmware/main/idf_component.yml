@@ -1,12 +1,12 @@
-# No managed components yet.
+# Managed components for the ESP32-2432S028R gauge.
 #
-# lvgl/lvgl was dropped deliberately: the gauge now draws straight into an
-# RGB565 framebuffer through the gfx component, which is a fraction of the
-# size and gives exact control over what reaches the panel.
+# lvgl/lvgl is deliberately absent: the gauge draws straight into an RGB565
+# framebuffer through the gfx component (see README.md).  A contract check
+# fails if it creeps back in.
 #
-# espressif/esp_lcd_gc9a01 is still used for the panel's command interface,
-# but with Waveshare's own init sequence supplied through vendor_config (see
-# docs/hardware.md for why).
+# esp_lcd_ili9341 supplies the ILI9341 panel driver.  The ST7789V variant of
+# the board is served by ESP-IDF's built-in esp_lcd_panel_st7789, so the same
+# dependency is enough for both - only the selected driver is linked in.
 dependencies:
   idf: ">=5.3"
-  espressif/esp_lcd_gc9a01: "^2"
+  espressif/esp_lcd_ili9341: "^2"

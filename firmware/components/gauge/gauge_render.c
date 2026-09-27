@@ -48,6 +48,10 @@ struct gauge_render {
     char  value_text[GAUGE_LABEL_LEN];
     char  status_text[24];
 
+    /* the margins around the dial never change, so after the first full clear
+     * each frame only repaints the dial's bounding square */
+    bool full_cleared;
+
     /* label storage for lv_scale-style auto numerals */
     char label_buf[GAUGE_MAX_TICKS][GAUGE_LABEL_LEN];
 };
@@ -199,12 +203,23 @@ static void draw_needle(gauge_render_t *g)
 static void draw_face_and_bezel(gauge_render_t *g)
 {
     const gauge_theme_t *th = g->cfg.theme;
+    const int r_face = GAUGE_DIAL_DIAMETER / 2;
+    const uint16_t face = gfx_hex(th->face);
 
-    gfx_clear(gfx_hex(th->face));
+    if (!g->full_cleared) {
+        gfx_clear(face);
+        g->full_cleared = true;
+    } else {
+        /* Only the dial's bounding square is repainted.  The 40 px side
+         * margins are outside every primitive the renderer draws, so they stay
+         * whatever the first clear put there. */
+        gfx_fill_rect(CX - r_face, CY - r_face, CX + r_face - 1, CY + r_face - 1, face);
+    }
+
     /* silver bezel: a ring at the very edge, and a darker line inside it so the
      * dial reads as recessed */
-    gfx_ring(CX, CY, 119, 119 - th->bezel_width, gfx_hex(th->bezel));
-    gfx_circle(CX, CY, 119 - th->bezel_width - 1, gfx_hex(th->needle_hub_ring));
+    gfx_ring(CX, CY, r_face - 1, r_face - 1 - th->bezel_width, gfx_hex(th->bezel));
+    gfx_circle(CX, CY, r_face - 1 - th->bezel_width - 1, gfx_hex(th->needle_hub_ring));
 }
 
 static void draw_hub(gauge_render_t *g)
@@ -321,7 +336,8 @@ gauge_render_t *gauge_render_create(const gauge_config_t *cfg)
     g->tick_minor_len = th->tick_minor_len;
     g->hub_radius = th->hub_radius;
 
-    g->r_rail = gauge_math_rail_radius(GFX_W, th->bezel_width, th->band_gap, th->band_width);
+    g->r_rail = gauge_math_rail_radius(GAUGE_DIAL_DIAMETER, th->bezel_width, th->band_gap,
+                                       th->band_width);
     g->r_band_out = g->r_rail;
     g->r_band_in = g->r_rail - th->band_width;
     g->r_tick_base = gauge_math_tick_base_radius(g->r_rail, th->band_width);
@@ -410,7 +426,7 @@ void gauge_render_geometry(const gauge_render_t *g, gauge_geometry_t *out)
     if (!g || !out) {
         return;
     }
-    out->dial_radius = GFX_W / 2;
+    out->dial_radius = GAUGE_DIAL_DIAMETER / 2;
     out->r_rail = g->r_rail;
     out->r_band_in = g->r_band_in;
     out->r_tick_base = g->r_tick_base;

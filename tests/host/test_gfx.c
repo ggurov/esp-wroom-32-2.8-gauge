@@ -145,7 +145,7 @@ TF_TEST(gfx, arc_band_covers_its_sweep_and_nothing_else)
      * topmost row, so sample at odd angles (mid-slice) and mid-radius.
      */
     gfx_clear(BLACK);
-    gfx_arc_band(120, 120, 100, 92, 0, 270, GREEN);
+    gfx_arc_band(GFX_W / 2, GFX_H / 2, 100, 92, 0, 270, GREEN);
 
     const int r = 96;                     /* midway between inner and outer */
     int x, y;

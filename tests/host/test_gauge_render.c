@@ -68,7 +68,8 @@ TF_TEST(gauge_render, rail_radius_follows_the_theme)
     TF_REQUIRE(g != NULL);
 
     /* the band sits on the rail, so sample its middle from the maths */
-    const int r = gauge_math_rail_radius(GFX_W, th->bezel_width, th->band_gap, th->band_width)
+    const int r = gauge_math_rail_radius(GAUGE_DIAL_DIAMETER, th->bezel_width, th->band_gap,
+                                         th->band_width)
                   - th->band_width / 2;
     const uint16_t band = gfx_hex(th->band);
 
@@ -307,6 +308,25 @@ TF_TEST(gauge_render, every_preset_draws_without_leaving_the_frame)
 
         gauge_render_destroy(g);
     }
+}
+
+TF_TEST(gauge_render, dial_is_centred_on_the_rectangle)
+{
+    const gauge_theme_t *th = gauge_preset_rpm()->theme;
+    gauge_render_t *g = make_rpm();
+    TF_REQUIRE(g != NULL);
+
+    gauge_render_set_immediate(g, 4000.0f);
+    gauge_render_draw(g);
+
+    /* the dial is a 240 px circle centred in the 320x240 panel: the bezel is
+     * at the top of the circle, and the side margins stay face-coloured */
+    TF_CHECK_MSG(at(CX, CY - (GAUGE_DIAL_DIAMETER / 2 - 1)) == gfx_hex(th->bezel),
+                 "bezel missing at the top of the dial");
+    TF_CHECK_MSG(at(2, CY) == gfx_hex(th->face), "ink in the left margin");
+    TF_CHECK_MSG(at(GFX_W - 3, CY) == gfx_hex(th->face), "ink in the right margin");
+
+    gauge_render_destroy(g);
 }
 
 TF_TEST(gauge_render, geometry_is_layered_without_overlaps)
